@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import zlib
+import numpy as np
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
@@ -319,7 +320,34 @@ class DecodeQR:
         if image is None:
             return None
 
-        barcodes = pyzbar.decode(image, symbols=[ZBarSymbol.QRCODE], binary=is_binary)
+        # pyzbar's NumPy path can reduce 3-channel images by selecting a single channel.
+        # Build a true luminance grayscale image first for better decode reliability.
+        decode_inputs = [image]
+        try:
+            if isinstance(image, np.ndarray):
+                if image.ndim == 3 and image.shape[2] >= 3:
+                    r = image[..., 0].astype(np.float32)
+                    g = image[..., 1].astype(np.float32)
+                    b = image[..., 2].astype(np.float32)
+                    gray = (0.299 * r + 0.587 * g + 0.114 * b).astype(np.uint8)
+                    threshold = np.where(gray > gray.mean(), 255, 0).astype(np.uint8)
+                    decode_inputs = [gray, threshold, image]
+                elif image.ndim == 2:
+                    threshold = np.where(image > image.mean(), 255, 0).astype(np.uint8)
+                    decode_inputs = [image, threshold]
+            elif isinstance(image, Image.Image):
+                gray = image.convert("L")
+                threshold = gray.point(lambda px: 255 if px > 128 else 0, mode="1")
+                decode_inputs = [gray, threshold, image]
+        except Exception:
+            # If preprocessing fails for any reason, continue with the original input.
+            decode_inputs = [image]
+
+        barcodes = []
+        for decode_input in decode_inputs:
+            barcodes = pyzbar.decode(decode_input, symbols=[ZBarSymbol.QRCODE], binary=is_binary)
+            if barcodes:
+                break
 
         # if barcodes:
             # print("--------------- extract_qr_data ---------------")

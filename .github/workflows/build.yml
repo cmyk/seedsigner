@@ -11,6 +11,10 @@ on:
       - dev
   workflow_dispatch:
     inputs:
+      os-repo:
+        description: The seedsigner-os repository (owner/repo) to use
+        default: cmyk/seedsigner-os
+        required: true
       os-ref:
         description: The seedsigner-os ref (tag/branch/sha1) to use
         default: main
@@ -33,7 +37,7 @@ jobs:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
         with:
-          repository: "seedsigner/seedsigner-os"
+          repository: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.os-repo || 'cmyk/seedsigner-os' }}
           # use the os-ref input parameter in case of workflow_dispatch or default to main in case of cron triggers
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.os-ref || 'main' }}
           submodules: true

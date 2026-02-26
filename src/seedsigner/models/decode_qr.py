@@ -8,6 +8,7 @@ import numpy as np
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
 from embit import psbt, bip39
+from PIL import Image, ImageOps
 from pyzbar import pyzbar
 from pyzbar.pyzbar import ZBarSymbol
 from urtypes.crypto import PSBT as UR_PSBT
@@ -316,12 +317,43 @@ class DecodeQR:
 
 
     @staticmethod
+    def _otsu_threshold_u8(gray: np.ndarray) -> np.ndarray:
+        hist = np.bincount(gray.ravel(), minlength=256).astype(np.float64)
+        total = gray.size
+        if total == 0:
+            return gray
+
+        sum_total = np.dot(np.arange(256), hist)
+        sum_bg = 0.0
+        w_bg = 0.0
+        max_var = -1.0
+        threshold = 127
+
+        for t in range(256):
+            w_bg += hist[t]
+            if w_bg == 0:
+                continue
+            w_fg = total - w_bg
+            if w_fg == 0:
+                break
+            sum_bg += t * hist[t]
+            m_bg = sum_bg / w_bg
+            m_fg = (sum_total - sum_bg) / w_fg
+            var_between = w_bg * w_fg * (m_bg - m_fg) ** 2
+            if var_between > max_var:
+                max_var = var_between
+                threshold = t
+
+        return np.where(gray > threshold, 255, 0).astype(np.uint8)
+
+
+    @staticmethod
     def extract_qr_data(image, is_binary:bool = False) -> str | None:
         if image is None:
             return None
 
         # pyzbar's NumPy path can reduce 3-channel images by selecting a single channel.
-        # Build a true luminance grayscale image first for better decode reliability.
+        # Build stronger grayscale/BW candidates first for better decode reliability.
         decode_inputs = [image]
         try:
             if isinstance(image, np.ndarray):
@@ -330,15 +362,38 @@ class DecodeQR:
                     g = image[..., 1].astype(np.float32)
                     b = image[..., 2].astype(np.float32)
                     gray = (0.299 * r + 0.587 * g + 0.114 * b).astype(np.uint8)
-                    threshold = np.where(gray > gray.mean(), 255, 0).astype(np.uint8)
-                    decode_inputs = [gray, threshold, image]
+                    gray_enhanced = np.array(ImageOps.autocontrast(Image.fromarray(gray, mode="L"), cutoff=2), dtype=np.uint8)
+                    threshold = DecodeQR._otsu_threshold_u8(gray_enhanced)
+                    decode_inputs = [
+                        gray_enhanced,
+                        threshold,
+                        (255 - gray_enhanced).astype(np.uint8),
+                        (255 - threshold).astype(np.uint8),
+                        gray,
+                        image,
+                    ]
                 elif image.ndim == 2:
-                    threshold = np.where(image > image.mean(), 255, 0).astype(np.uint8)
-                    decode_inputs = [image, threshold]
+                    gray = image.astype(np.uint8)
+                    gray_enhanced = np.array(ImageOps.autocontrast(Image.fromarray(gray, mode="L"), cutoff=2), dtype=np.uint8)
+                    threshold = DecodeQR._otsu_threshold_u8(gray_enhanced)
+                    decode_inputs = [
+                        gray_enhanced,
+                        threshold,
+                        (255 - gray_enhanced).astype(np.uint8),
+                        (255 - threshold).astype(np.uint8),
+                        gray,
+                    ]
             elif isinstance(image, Image.Image):
-                gray = image.convert("L")
-                threshold = gray.point(lambda px: 255 if px > 128 else 0, mode="1")
-                decode_inputs = [gray, threshold, image]
+                gray = ImageOps.autocontrast(image.convert("L"), cutoff=2)
+                gray_u8 = np.array(gray, dtype=np.uint8)
+                threshold = Image.fromarray(DecodeQR._otsu_threshold_u8(gray_u8), mode="L")
+                decode_inputs = [
+                    gray,
+                    threshold,
+                    ImageOps.invert(gray),
+                    ImageOps.invert(threshold),
+                    image,
+                ]
         except Exception:
             # If preprocessing fails for any reason, continue with the original input.
             decode_inputs = [image]

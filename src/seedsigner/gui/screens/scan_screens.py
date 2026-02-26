@@ -2,7 +2,7 @@ import time
 
 from dataclasses import dataclass
 from gettext import gettext as _
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from seedsigner.gui import renderer
 from seedsigner.gui.components import GUIConstants, Fonts, resize_image_to_fill
@@ -104,6 +104,8 @@ class ScanScreen(BaseScreen):
                 frame = self.camera.read_video_stream(as_image=True)
                 if frame is not None:
                     num_frames += 1
+                    # Display scan preview in grayscale to improve edge contrast.
+                    frame = ImageOps.autocontrast(frame.convert("L"), cutoff=2).convert("RGBA")
                     
                     scan_text = None
                     progress_percentage = self.decoder.get_percent_complete()
@@ -263,4 +265,3 @@ class ScanScreen(BaseScreen):
                 if self.hw_inputs.check_for_low(HardwareButtonsConstants.KEY_RIGHT) or self.hw_inputs.check_for_low(HardwareButtonsConstants.KEY_LEFT):
                     self.camera.stop_video_stream_mode()
                     return False
-

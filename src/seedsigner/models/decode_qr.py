@@ -3,7 +3,10 @@ import json
 import logging
 import re
 import zlib
-import numpy as np
+try:
+    import numpy as np
+except ModuleNotFoundError:
+    np = None
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
@@ -317,7 +320,10 @@ class DecodeQR:
 
 
     @staticmethod
-    def _otsu_threshold_u8(gray: np.ndarray) -> np.ndarray:
+    def _otsu_threshold_u8(gray):
+        if np is None:
+            return gray
+
         hist = np.bincount(gray.ravel(), minlength=256).astype(np.float64)
         total = gray.size
         if total == 0:
@@ -356,7 +362,7 @@ class DecodeQR:
         # Build stronger grayscale/BW candidates first for better decode reliability.
         decode_inputs = [image]
         try:
-            if isinstance(image, np.ndarray):
+            if np is not None and isinstance(image, np.ndarray):
                 if image.ndim == 3 and image.shape[2] >= 3:
                     r = image[..., 0].astype(np.float32)
                     g = image[..., 1].astype(np.float32)

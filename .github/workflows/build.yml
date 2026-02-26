@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ "pi0", "pi2", "pi02w", "pi4" ]
+        target: [ "pi0" ]
     steps:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
